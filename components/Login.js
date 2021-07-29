@@ -10,6 +10,7 @@ export default function Login({navigation}) {
      //function to handle when login btn is clicked on
      function handleLoginBtnClick() {
         console.log("login clicked", email, password);
+        navigation.navigate('Media');
     }
 
 
