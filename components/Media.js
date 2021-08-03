@@ -1,65 +1,198 @@
-import React, { useState,useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, ScrollView, Button } from 'react-native';
-import BasicButton from './components/BasicButton';
-export default function Media(){
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, Platform, ScrollView, Image, TextInput, ActivityIndicator, Alert, Button } from 'react-native';
 
-  const [image,setImage]=useState(null);
+import * as ImagePicker from 'expo-image-picker';
+
+import firebase from "./FirebaseConfig";
+import storage from './FirebaseStorge';
+
+
+export default function Media() {
+    const [image, setImage] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [percentUploaded, setPercentUploaded] = useState("");
+    const [quizName, setQuizName] = useState("");
+    const [quizType, setQuizType] = useState("");
+
+    //component did mount
     useEffect(() => {
+        //asking for permission to access phone's gallery
         (async () => {
-          if (Platform.OS !== 'web') {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-              alert('Sorry, we need camera roll permissions to make this work!');
+            if (Platform.OS !== 'web') {
+                const { status } = await ImagePicker.requestCameraRollPermissionsAsync();
+                if (status !== 'granted') {
+                    alert('Sorry, we need camera roll permissions to make this work!');
+                }
             }
-          }
         })();
-      }, []);
+    }, []);
 
-
-    async function handlepick(){
+    //function to handle when Pick Image btn is clicked on
+    async function handlePickImgBtnClick() {
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.All,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 1,
-          });
-      
-          console.log(result);
-      
-          if (!result.cancelled) {
+            aspect:[1,1],
+            quality: 0.5,
+        });
+
+        if (!result.cancelled) {
             setImage(result.uri);
-          }
-      
+        }
     }
-    return(
-        <ScrollView>
-           <BasicButton 
-           text="Pick a Image " onPress={handlepick}
-           >
 
-           </BasicButton>
-           {
-             image?<>
-             <Image source={{uri:Image}} style={StyleSheet.pics}>
-              
-             </Image>
-             </>: null
+ //function to upload the image in firebase
+ async function uploadImage(uri) {
+    const timeStamp = Math.floor(Date.now() / 1000);
+    const imageName = timeStamp + ".jpg";
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    //putting image in firebase
+    const storageRef = storage.ref().child("image/" + imageName);
+    const resp = storageRef.put(blob);
+    resp.on(
+        firebase.storage.TaskEvent.STATE_CHANGED,
+        snapshot => {
+            const percent = ((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            console.log("percent", percent);
+            setPercentUploaded(Math.floor(percent) + " %");
+        },
+        error => {
+            console.log("image upload error: ", error.message);
+            setPercentUploaded("");
+        },
+        () => {
+            storageRef.getDownloadURL()
+                .then((downloadUrl) => {     
+                    setImage(downloadUrl);
+                    console.log("File available at:", downloadUrl);
+                })
+        }
+    );
+return resp;
+}
 
 
-           }
-             </ScrollView>
+    //function to handle when submit quiz btn is pressed on
+    function handleUploadImageBtnClick() {
+        console.log("Upload Image btn pressed", image);
+
+        if (image) {
+            setImage("");
+            setIsUploading(true);
+
+            //saving image to firebase
+            uploadImage(image)
+                .then(() => {
+                    setIsUploading(false);
+                    console.log("Successful!")
+                })
+                .catch((error) => {
+                    console.log("Fail to upload Image", error);
+                    setIsUploading(false);
+                });
+        }
+    }
+
+
+    //component rendering
+    return (
+        <ScrollView style={styles.container}>
+            <Text style={styles.title}>Media Management</Text>
+            <View style={styles.divider}></View>
+
+            <Text style={styles.label}>Quiz Name</Text>
+            <TextInput
+                style={styles.inputField}
+                placeholder="Enter your name"
+                value={quizName}
+                onChangeText={(name) => setQuizName(name)}
+            />
+            <View style={styles.divider}></View>
+
+
+       
+            <View style={styles.divider}></View>
+
+           
+           
+            {
+                image ?
+                    <>
+                        <Image source={{ uri: image }} style={styles.image} />
+                        <View style={styles.divider}></View>
+                    </>
+
+                    : null
+            }
+
+            {
+              isUploading?
+              <>
+             
+              <ActivityIndicator size="small" color="#0000ff" />
+             <Text style={{textAlign:'center',}}>
+               {percentUploaded}
+             </Text>
+              </>: null
+            }
+
+            
+            <Button
+                title="Select Image"
+                onPress={handlePickImgBtnClick}
+            />
+             <View style={styles.divider}></View>
+            <Button
+                title="Upload Image"
+                onPress={handleUploadImageBtnClick}
+            />
+            
+        </ScrollView>
     );
 }
 
-const style=StyleSheet.create({
+const styles = StyleSheet.create({
+    container: {
+        backgroundColor: '#fff',
+        marginTop: 60,
+        paddingHorizontal: 30,
+    },
 
-  pics:{
-    width:"100%",
-    height:"100%",
-    alignSelf:'center',
+    title: {
+        fontWeight: '500',
+        fontSize: 30,
+        letterSpacing: 0.1,
+        textAlign: "center",
+    },
 
+    label: {
+        fontSize: 16,
+        lineHeight: 18,
+        color: '#666666',
+        marginBottom: 3,
+    },
 
-  }
+    inputField: {
+        fontSize: 14,
+        borderWidth: 0,
+        borderBottomWidth: 1,
+        borderBottomColor: '#BFBFBF',
+        paddingVertical: 6,
+    },
 
+    divider: {
+        paddingVertical: 8,
+    },
 
+    image: {
+        alignSelf: "center",
+        width: "100%",
+        height: "100%",
+    },
+
+    percent: {
+        textAlign: "center",
+    }
 });
